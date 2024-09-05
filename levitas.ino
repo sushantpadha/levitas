@@ -1,10 +1,12 @@
 /*
 Bot programming code: Written on CPP modified to work on Arduino IDE
-Written for and by Electronics & Robotics Club, IIT Bombay with assistance from internet resources.
+Written for and by Electronics & Robotics Club, IIT Bombay with assistance from internet
+resources.
 
-For: Raspberry Pi Pico W to navigate a 4-wheeled bot based on differential drive(INCOMPLETE)
-NOTE: ALL LIBRARIES COME PREINSTALLED IN YOUR ARDUINO IDE, YOU AREN'T EXPECTED TO INSTALL ANYTHING EXTRA OTHER THAN WHAT WAS TAUGHT IN GET CODIFIED.
-©ERC // MIT License 2024 
+For: Raspberry Pi Pico W to navigate a 4-wheeled bot based on differential
+drive(INCOMPLETE) NOTE: ALL LIBRARIES COME PREINSTALLED IN YOUR ARDUINO IDE, YOU AREN'T
+EXPECTED TO INSTALL ANYTHING EXTRA OTHER THAN WHAT WAS TAUGHT IN GET CODIFIED. ©ERC //
+MIT License 2024
 */
 
 /*//////////////////////////////////////////////////////////////////////////////
@@ -39,9 +41,9 @@ Constants are defined below
 
 //////////////////////////////////////////////////////////////////////////////*/
 
-#include <WiFi.h>
-#include <Servo.h>
 #include <ArduinoJson.h>
+#include <Servo.h>
+#include <WiFi.h>
 
 #define _USE_AP_
 
@@ -58,9 +60,9 @@ const short dataPollingTimeout = 10;
 const float CF = 3.14159265 / 180;  // this is as good as float can be
 const short MAX_SERVO_ANGLE = 45;
 const short SIGNAL_THRESHOLD = 128;  // 0 - 255
-const short L = 11;                  // Shaft to shaft length from front to back in cm
-const short W = 15;                  // Shaft to shaft width from left to right in cm
-const short DEL = 0;                 // Distance between axes of universal joint and tyre
+const short L = 11;   // Shaft to shaft length from front to back in cm
+const short W = 15;   // Shaft to shaft width from left to right in cm
+const short DEL = 0;  // Distance between axes of universal joint and tyre
 
 typedef enum {
   SERVOPIN = 4,
@@ -87,29 +89,21 @@ WiFiClient client;
 Servo servo;
 
 // define global variables from relevant functions
-short servo_angle, status, speed, angle;
+short servo_angle;
+short status;
+short speed, angle;
 float r1, r2, rr, lsig, rsig;
 bool state;
-
+long long i;
 // servo_angle = status = speed = angle = state = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-float sinD(float deg) {
-  return sin(deg * CF);
-}
-float cosD(float deg) {
-  return cos(deg * CF);
-}
-float tanD(float deg) {
-  return tan(deg * CF);
-}
-float asinD(float val) {
-  return asin(val) / CF;
-}
-short sgn(short val) {
-  return ((val > 0) ? 1 : -1);
-}
+float sinD(float deg) { return sin(deg * CF); }
+float cosD(float deg) { return cos(deg * CF); }
+float tanD(float deg) { return tan(deg * CF); }
+float asinD(float val) { return asin(val) / CF; }
+template typename T short sgn(T val) { return ((val > 0) ? 1 : -1); }
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -119,9 +113,7 @@ short clamp_angle(short angle) {
             : ((angle < 0) ? -MAX_SERVO_ANGLE : MAX_SERVO_ANGLE));
 }
 
-float scale_speed(short speed) {
-  return ((speed / 100.0) * 255);
-}
+float scale_speed(short speed) { return ((speed / 100.0) * 255); }
 
 short convert_to_servo_angle(short angle) {
   return 90 - clamp_angle(angle);
@@ -140,7 +132,8 @@ void set_radii(float* const r1, float* const r2, float* const rr) {
 // sets the signals of the left and right motors
 void set_signals(float* const r1, float* const r2, float* const rr, float* const lsig,
                  float* const rsig, const short* const _angle) {
-  *rsig = (*r1 * (*lsig * *rr * cosD(asinD(W * sinD(*_angle) / (2 * *r2)))) / *r2) / (*rr * cosD(asinD(W * sinD(*_angle) / (2 * *r1))));
+    *rsig = (*r1 * (*lsig * *rr * cosD(asinD(W * sinD(*_angle) / (2 * *r2)))) / *r2) /
+            (*rr * cosD(asinD(W * sinD(*_angle) / (2 * *r1))));
 }
 
 // corrects for axis of tyres and universal joint being different
@@ -156,11 +149,9 @@ void set_signals_diff_steering(float* const rsig) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void reset_instr() {
-  lsig = rsig = servo_angle = 0;
-}
+void reset_instr() { lsig = rsig = servo_angle = 0; }
 
-int process_response(String response) {
+short process_response(String response) {
   // for debugging
   Serial.print("received response @ ");
   Serial.print(millis());
@@ -190,7 +181,8 @@ int process_response(String response) {
 
   // calculate servo angle, and lsig as base value
   servo_angle = convert_to_servo_angle(angle);
-  Serial.printf("angle = %d, servo_angle = %d, clamped_angle = %d\n", doc["angle"].as<short>(), servo_angle, clamp_angle(angle));
+    Serial.printf("angle = %d, servo_angle = %d, clamped_angle = %d\n", angle,
+                  servo_angle, clamp_angle(angle));
   lsig = scale_speed(speed);
 
   // convert to absolute values
@@ -219,12 +211,13 @@ int process_response(String response) {
     rsig = tmp;
   }
 
-  Serial.printf("lsig = %.3f, rsig = %.3f, servo_angle = %d\n\n", lsig, rsig, servo_angle);
+    Serial.printf("lsig = %.3f, rsig = %.3f, servo_angle = %d\n\n", lsig, rsig,
+                  servo_angle);
 
   return 0;
 }
 
-int write_motor_speed(short motor, short signal) {
+short write_motor_speed(short motor, short signal) {
   // A = 1, B = 2
   short in_f, in_b, en;
   switch (motor) {
@@ -264,7 +257,7 @@ int write_motor_speed(short motor, short signal) {
   return 0;
 }
 
-int send_instructions() {
+short send_instructions() {
   // write to servo
   servo.write(servo_angle);
 
@@ -282,7 +275,8 @@ int send_instructions() {
 void setup() {
   // init serial for debugging
   Serial.begin(115200);
-  while (!Serial) {}
+    while (!Serial) {
+    }
 
   // setup servo pin
   servo.attach(SERVOPIN);
@@ -314,7 +308,8 @@ void setup() {
   // start wifi connection
   WiFi.begin(ssid, password);
   // wait for establishing connection
-  while (WiFi.status() != WL_CONNECTED) {}
+    while (WiFi.status() != WL_CONNECTED) {
+    }
   // print hostname ip port
   localIp = WiFi.localIP().toString().c_str();
   Serial.printf("Connected as '%s' @ %s:%d\n", hostname, localIP, port);
@@ -326,13 +321,19 @@ void setup() {
 
   // start the server
   server.begin();
-  while (WiFi.status() != WL_CONNECTED) {}
+    while (WiFi.status() != WL_CONNECTED) {
+    }
 }
 
 void loop() {
+  i++;
+  long long start = millis();
+
   // open connection to client
   client = server.accept();
-  if (!client) { return; }
+    if (!client) {
+        return;
+    }
 
   // read bytes till non-zero bytes are received
   while (!client.available()) {
@@ -341,7 +342,9 @@ void loop() {
 
   // read client response
   String response = client.readStringUntil('\n');
+    long long data_read = millis();
   status = process_response(response);
+
 
   // catch error
   if (status) {
@@ -355,5 +358,12 @@ void loop() {
     return;
   }
 
+    long long end = millis();
+
+    Serial.printf("    iteration %d\n    ms reading data: %d\n    ms proc response and send instruc: %d\n", i, data_read-start, end-data_read);
+
   delay(dataReadingTimeout);
 }
+
+#ifdef _USE_AP_
+#undef _USE_AP_
