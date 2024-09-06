@@ -103,7 +103,8 @@ float sinD(float deg) { return sin(deg * CF); }
 float cosD(float deg) { return cos(deg * CF); }
 float tanD(float deg) { return tan(deg * CF); }
 float asinD(float val) { return asin(val) / CF; }
-template typename T short sgn(T val) { return ((val > 0) ? 1 : -1); }
+template <typename T>
+short sgn(T val) { return ((val > 0) ? 1 : -1); }
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -367,3 +368,4 @@ void loop() {
 
 #ifdef _USE_AP_
 #undef _USE_AP_
+#endif
