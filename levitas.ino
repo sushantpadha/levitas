@@ -191,7 +191,7 @@ short process_response(String response) {
   speed = doc["speed"].as<short>();
   angle = doc["angle"].as<short>();
 
-  digitalWrite(LED_BUILTIN, ((state) ? HIGH : LOW));
+  // digitalWrite(LED_BUILTIN, ((state) ? HIGH : LOW));
 
   // if state is off OR speed = 0
   if (!state || !speed) {
