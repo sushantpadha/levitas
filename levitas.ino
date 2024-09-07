@@ -31,8 +31,8 @@ L289N connections:
   SERVOPIN reads angle input
 
 Choice of direction:
-  motor A - right
-  motor B - left
+  motor A - left
+  motor B - right
 
 Angle [-90, 90] +ve => right, -ve => left, 0 => straight (steering angle basically)
 Speed [-100, 100] +ve forward -ve backward
@@ -48,8 +48,8 @@ Constants are defined below
 #define _USE_AP_
 
 const char* ssidAP = "LevitasPicoW2_AP";
-const char* ssidExt = "echo";
 const char* passwordAP = "lightness";
+const char* ssidExt = "echo";
 const char* passwordExt = "qwertyui";
 const char* hostname = "LevitasPicoW2";
 const short port = 80;
@@ -60,7 +60,6 @@ const short dataPollingTimeout = 1;
 const float CF = 3.14159265 / 180;  // this is as good as float can be
 const short MAX_SERVO_ANGLE = 60;
 const short MAX_STEERING_ANGLE = 45;
-const short SIGNAL_THRESHOLD = 128;  // 0 - 255
 const short L = 11;                  // Shaft to shaft length from front to back in cm
 const short W = 15;                  // Shaft to shaft width from left to right in cm
 const short DEL = 0;                 // Distance between axes of universal joint and tyre
@@ -95,8 +94,6 @@ short status;
 short speed, angle;
 float r1, r2, rr, lsig, rsig;
 bool state;
-long long i;
-// servo_angle = status = speed = angle = state = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,28 +135,27 @@ short convert_to_servo_angle(short angle) {
 ////////////////////////////////////////////////////////////////////////////////
 
 // sets the radii of the path left and right wheels will follow
-void set_radii(float* const r1, float* const r2, float* const rr) {
+void set_radii() {
   float r3 = (L / tanD(angle)) - (W / 2.0);
-  *r1 = sqrt(L * L + r3 * r3);
-  *r2 = sqrt(L * L + (r3 + W) * (r3 + W));
-  *rr = L / sinD(angle);
+  r1 = sqrt(L * L + r3 * r3);
+  r2 = sqrt(L * L + (r3 + W) * (r3 + W));
+  rr = L / sinD(angle);
 }
 
 // sets the signals of the left and right motors
-void set_signals(float* const r1, float* const r2, float* const rr, float* const lsig,
-                 float* const rsig, const short* const _angle) {
-  *rsig = (*r1 * (*lsig * *rr * cosD(asinD(W * sinD(*_angle) / (2 * *r2)))) / *r2) / (*rr * cosD(asinD(W * sinD(*_angle) / (2 * *r1))));
+void set_signals(const short _angle) {
+  rsig = (r1 * (lsig * rr * cosD(asinD(W * sinD(_angle) / (2 * r2)))) / r2) / (rr * cosD(asinD(W * sinD(_angle) / (2 * r1))));
 }
 
 // corrects for axis of tyres and universal joint being different
-void correct_radii(float* const r1, float* const r2) {
-  *r1 -= DEL * cosD(asinD(W * sinD(angle) / (2 * *r1)));
-  *r2 += DEL * cosD(asinD(W * sinD(angle) / (2 * *r2)));
+void correct_radii() {
+  r1 -= DEL * cosD(asinD(W * sinD(angle) / (2 * r1)));
+  r2 += DEL * cosD(asinD(W * sinD(angle) / (2 * r2)));
 }
 
 // used when steering angle greater than maximum set axle steering angle
-void set_signals_diff_steering(float* const rsig) {
-  *rsig *= 2 - angle / MAX_STEERING_ANGLE;
+void set_signals_diff_steering() {
+  rsig *= 2 - angle / MAX_STEERING_ANGLE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -212,13 +208,13 @@ short process_response(String response) {
   angle *= angle_sgn;
 
   // perform calculations
-  set_radii(&r1, &r2, &rr);
-  correct_radii(&r1, &r2);
-  set_signals(&r1, &r2, &rr, &lsig, &rsig, &angle);
+  set_radii();
+  correct_radii();
+  set_signals(&angle);
 
   if (angle > MAX_SERVO_ANGLE) {
-    set_signals(&r1, &r2, &rr, &lsig, &rsig, &MAX_SERVO_ANGLE);
-    set_signals_diff_steering(&rsig);
+    set_signals(&MAX_SERVO_ANGLE);
+    set_signals_diff_steering();
   }
 
   // reconvert to actual values
@@ -283,11 +279,11 @@ short send_instructions() {
   // write to servo
   servo.write(servo_angle);
 
-  // write to right motors
-  write_motor_speed(1, rsig);
-
   // write to left motors
-  write_motor_speed(2, lsig);
+  write_motor_speed(1, lsig);
+
+  // write to right motors
+  write_motor_speed(2, rsig);
 
   return 0;
 }
@@ -301,7 +297,7 @@ void setup() {
 
   // setup servo pin
   servo.attach(SERVOPIN);
-  servo.write(90);  // start from center posn
+  servo.write(convert_to_servo_angle(0));  // start from center posn
 
   // setup motor pins
   pinMode(LED_BUILTIN, OUTPUT);
@@ -348,9 +344,6 @@ void setup() {
 }
 
 void loop() {
-  i++;
-  // long long start = millis();
-
   // open connection to client
   client = server.accept();
   if (!client) {
@@ -366,7 +359,6 @@ void loop() {
 
   // read client response
   String response = client.readStringUntil('\n');
-  // long long data_read = millis();
   status = process_response(response);
 
 
@@ -381,10 +373,6 @@ void loop() {
     // Serial.println("caught error in sending instructions. continuing loop.");
     return;
   }
-
-  // long long end = millis();
-
-  // Serial.printf("    iteration %d\n    ms reading data: %d\n    ms proc response and send instruc: %d\n", i, data_read - start, end - data_read);
 
   // Serial.println();
   digitalWrite(LED_BUILTIN, LOW);
