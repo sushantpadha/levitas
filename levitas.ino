@@ -174,7 +174,6 @@ short process_response(String response) {
         return -1;
     }
 
-    // TODO: error-prone
     state = (doc["state"] == "on") ? true : false;
     speed = doc["speed"].as<short>();
     angle = doc["angle"].as<short>();
@@ -301,6 +300,8 @@ void setup() {
     pinMode(IN3, OUTPUT);
     pinMode(IN4, OUTPUT);
 
+    digitalWrite(LED_BUILTIN, HIGH);
+
 #ifdef _USE_AP_
 
     // set up the access point
@@ -352,16 +353,14 @@ void loop() {
 
     // read client response
     String response = client.readStringUntil('\n');
-    status = process_response(response);
 
     // catch error
-    if (status) {
+    if (status = process_response(response)) {
         // Serial.println("caught error in processing response. continuing loop.");
         return;
     }
 
-    status = send_instructions();
-    if (status) {
+    if (status = send_instructions()) {
         // Serial.println("caught error in sending instructions. continuing loop.");
         return;
     }
