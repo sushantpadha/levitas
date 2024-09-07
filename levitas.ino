@@ -54,15 +54,16 @@ const char* passwordExt = "qwertyui";
 const char* hostname = "LevitasPicoW2";
 const short port = 80;
 const char* localIP;
-const short dataReadingTimeout = 50;
-const short dataPollingTimeout = 10;
+const short dataReadingTimeout = 10;
+const short dataPollingTimeout = 1;
 
 const float CF = 3.14159265 / 180;  // this is as good as float can be
-const short MAX_SERVO_ANGLE = 45;
+const short MAX_SERVO_ANGLE = 60;
+const short MAX_STEERING_ANGLE = 45;
 const short SIGNAL_THRESHOLD = 128;  // 0 - 255
-const short L = 11;   // Shaft to shaft length from front to back in cm
-const short W = 15;   // Shaft to shaft width from left to right in cm
-const short DEL = 0;  // Distance between axes of universal joint and tyre
+const short L = 11;                  // Shaft to shaft length from front to back in cm
+const short W = 15;                  // Shaft to shaft width from left to right in cm
+const short DEL = 0;                 // Distance between axes of universal joint and tyre
 
 typedef enum {
   SERVOPIN = 4,
@@ -99,12 +100,22 @@ long long i;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-float sinD(float deg) { return sin(deg * CF); }
-float cosD(float deg) { return cos(deg * CF); }
-float tanD(float deg) { return tan(deg * CF); }
-float asinD(float val) { return asin(val) / CF; }
-template <typename T>
-short sgn(T val) { return ((val > 0) ? 1 : -1); }
+float sinD(float deg) {
+  return sin(deg * CF);
+}
+float cosD(float deg) {
+  return cos(deg * CF);
+}
+float tanD(float deg) {
+  return tan(deg * CF);
+}
+float asinD(float val) {
+  return asin(val) / CF;
+}
+template<typename T>
+short sgn(T val) {
+  return ((val > 0) ? 1 : -1);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -114,10 +125,14 @@ short clamp_angle(short angle) {
             : ((angle < 0) ? -MAX_SERVO_ANGLE : MAX_SERVO_ANGLE));
 }
 
-float scale_speed(short speed) { return ((speed / 100.0) * 255); }
+float scale_speed(short speed) {
+  return ((speed / 100.0) * 255);
+}
 
 short convert_to_servo_angle(short angle) {
-  return 90 - clamp_angle(angle);
+  if (angle > 0) angle *= 4 / 3;
+  else if (angle < 0) angle *= 5 / 3;
+  return (clamp_angle(angle) * 16 / 8 + 62);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,8 +148,7 @@ void set_radii(float* const r1, float* const r2, float* const rr) {
 // sets the signals of the left and right motors
 void set_signals(float* const r1, float* const r2, float* const rr, float* const lsig,
                  float* const rsig, const short* const _angle) {
-    *rsig = (*r1 * (*lsig * *rr * cosD(asinD(W * sinD(*_angle) / (2 * *r2)))) / *r2) /
-            (*rr * cosD(asinD(W * sinD(*_angle) / (2 * *r1))));
+  *rsig = (*r1 * (*lsig * *rr * cosD(asinD(W * sinD(*_angle) / (2 * *r2)))) / *r2) / (*rr * cosD(asinD(W * sinD(*_angle) / (2 * *r1))));
 }
 
 // corrects for axis of tyres and universal joint being different
@@ -145,19 +159,22 @@ void correct_radii(float* const r1, float* const r2) {
 
 // used when steering angle greater than maximum set axle steering angle
 void set_signals_diff_steering(float* const rsig) {
-  *rsig *= 2 - angle / MAX_SERVO_ANGLE;
+  *rsig *= 2 - angle / MAX_STEERING_ANGLE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void reset_instr() { lsig = rsig = servo_angle = 0; }
+void reset_instr() {
+  lsig = rsig = 0;
+  servo_angle = convert_to_servo_angle(0);
+}
 
 short process_response(String response) {
   // for debugging
-  Serial.print("received response @ ");
-  Serial.print(millis());
-  Serial.print("ms : ");
-  Serial.println(response);
+  // Serial.print("received response @ ");
+  // Serial.print(millis());
+  // Serial.print("ms : ");
+  // Serial.println(response);
 
   // deserialize json
   JsonDocument doc;
@@ -165,7 +182,7 @@ short process_response(String response) {
 
   // catch error
   if (error) {
-    Serial.printf("Deserialization failed:\n  error=%s\n", error.c_str());
+    // Serial.printf("Deserialization failed:\n  error=%s\n", error.c_str());
     return -1;
   }
 
@@ -173,6 +190,8 @@ short process_response(String response) {
   state = (doc["state"] == "on") ? true : false;
   speed = doc["speed"].as<short>();
   angle = doc["angle"].as<short>();
+
+  digitalWrite(LED_BUILTIN, ((state) ? HIGH : LOW));
 
   // if state is off OR speed = 0
   if (!state || !speed) {
@@ -182,8 +201,8 @@ short process_response(String response) {
 
   // calculate servo angle, and lsig as base value
   servo_angle = convert_to_servo_angle(angle);
-    Serial.printf("angle = %d, servo_angle = %d, clamped_angle = %d\n", angle,
-                  servo_angle, clamp_angle(angle));
+  // Serial.printf("angle = %d, servo_angle = %d, clamped_angle = %d\n", angle,
+  //               servo_angle, clamp_angle(angle));
   lsig = scale_speed(speed);
 
   // convert to absolute values
@@ -212,8 +231,8 @@ short process_response(String response) {
     rsig = tmp;
   }
 
-    Serial.printf("lsig = %.3f, rsig = %.3f, servo_angle = %d\n\n", lsig, rsig,
-                  servo_angle);
+  lsig = short(lsig);
+  rsig = short(rsig);
 
   return 0;
 }
@@ -259,6 +278,8 @@ short write_motor_speed(short motor, short signal) {
 }
 
 short send_instructions() {
+  // Serial.printf("Sending %f %f %d", lsig, rsig, servo_angle);
+
   // write to servo
   servo.write(servo_angle);
 
@@ -275,15 +296,15 @@ short send_instructions() {
 
 void setup() {
   // init serial for debugging
-  Serial.begin(115200);
-    while (!Serial) {
-    }
+  // Serial.begin(115200);
+  // while (!Serial);
 
   // setup servo pin
   servo.attach(SERVOPIN);
   servo.write(90);  // start from center posn
 
   // setup motor pins
+  pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ENA, OUTPUT);
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -291,78 +312,82 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
 
-  #ifdef _USE_AP_
+#ifdef _USE_AP_
 
   // set up the access point
-  Serial.print("Setting up WiFi AP ");
+  // Serial.print("Setting up WiFi AP ");
   WiFi.softAP(ssidAP, passwordAP);
 
   // print hostname ip port
   localIP = WiFi.softAPIP().toString().c_str();
-  Serial.printf("as '%s' @ %s:%d\n", hostname, localIP, port);
-  
-  #else  // use external network to connect
+  // Serial.printf("as '%s' @ %s:%d\n", hostname, localIP, port);
+
+#else  // use external network to connect
 
   // set up wifi ext
-  Serial.print("Setting up WiFi ext ");
-  Serial.printf("[ ssid=%s, password=%s ]\n", ssid, password);
+  // Serial.print("Setting up WiFi ext ");
+  // Serial.printf("[ ssid=%s, password=%s ]\n", ssidExt, passwordExt);
   // start wifi connection
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssidExt, passwordExt);
   // wait for establishing connection
-    while (WiFi.status() != WL_CONNECTED) {
-    }
+  while (WiFi.status() != WL_CONNECTED) {
+  }
   // print hostname ip port
-  localIp = WiFi.localIP().toString().c_str();
-  Serial.printf("Connected as '%s' @ %s:%d\n", hostname, localIP, port);
+  localIP = WiFi.localIP().toString().c_str();
+  // Serial.printf("Connected as '%s' @ %s:%d\n", hostname, localIP, port);
 
-  #endif
+#endif
 
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(hostname);
 
   // start the server
   server.begin();
-    while (WiFi.status() != WL_CONNECTED) {
-    }
+  while (WiFi.status() != WL_CONNECTED) {
+  }
 }
 
 void loop() {
   i++;
-  long long start = millis();
+  // long long start = millis();
 
   // open connection to client
   client = server.accept();
-    if (!client) {
-        return;
-    }
+  if (!client) {
+    return;
+  }
 
   // read bytes till non-zero bytes are received
   while (!client.available()) {
     delay(dataPollingTimeout);
   }
 
+  digitalWrite(LED_BUILTIN, HIGH);
+
   // read client response
   String response = client.readStringUntil('\n');
-    long long data_read = millis();
+  // long long data_read = millis();
   status = process_response(response);
 
 
   // catch error
   if (status) {
-    Serial.println("caught error in processing response. continuing loop.");
+    // Serial.println("caught error in processing response. continuing loop.");
     return;
   }
 
   status = send_instructions();
   if (status) {
-    Serial.println("caught error in sending instructions. continuing loop.");
+    // Serial.println("caught error in sending instructions. continuing loop.");
     return;
   }
 
-    long long end = millis();
+  // long long end = millis();
 
-    Serial.printf("    iteration %d\n    ms reading data: %d\n    ms proc response and send instruc: %d\n", i, data_read-start, end-data_read);
+  // Serial.printf("    iteration %d\n    ms reading data: %d\n    ms proc response and send instruc: %d\n", i, data_read - start, end - data_read);
 
+  // Serial.println();
+  digitalWrite(LED_BUILTIN, LOW);
   delay(dataReadingTimeout);
 }
 
